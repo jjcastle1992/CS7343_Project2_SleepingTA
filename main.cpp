@@ -29,13 +29,14 @@ struct Student {
 };
 
 // ************GLOBAL VARIABLES********* TERRIBLE PRACTICE
-std::binary_semaphore s(1); // our semaphore acting as a mutex lock
+std::binary_semaphore taSemaphore(1); // our semaphore acting as a mutex lock
+
 std::vector<Student*> students;
 std::vector<Student*> hallway;
 Student *walkinStudent = nullptr;
 int studytime = 10; // time quantum for studying before seeking help.
-
 enum taStatus {Sleeping, Waking, Helping};
+
 
 void taOfficeHours (TeachingAssistant *currentTa){
     // While students are still finishing their assignments, continue to run (work, wait, sleep)
@@ -45,9 +46,12 @@ void taOfficeHours (TeachingAssistant *currentTa){
         // See if there is a walk-in students (no one in chairs so no one in queue, but student waiting to be served)
         if(walkinStudent){
             if(currentTa->taState == Sleeping){
-//                std::cout << "TA Waiting to be woken up by Walk-in" << std::endl;
+                std::cout << "There is a walk-in, but I am asleep" << std::endl;
+                taSemaphore.acquire();  // Wait to complete until Semaphore is acquired
             }
             else{
+
+                currentTa->taState = Helping;
                 Student *currentStudent = walkinStudent;
                 std::cout << "TA working with Student:" << currentStudent->studentId << std::endl;
                 currentStudent = nullptr;
@@ -56,6 +60,7 @@ void taOfficeHours (TeachingAssistant *currentTa){
 
         // Checking for students in hall chairs
         if((!hallway.empty()) && (currentTa->taState != Sleeping)){
+            currentTa->taState = Helping;
             // Critical Section
             Student *currentStudent = hallway[0]; // Call in the next student
             hallway.erase(hallway.begin()); // Dequeue the student off the queue
@@ -76,14 +81,20 @@ bool visitTa (Student *currentStudent, TeachingAssistant *currentTa) {
     bool successfulVisit = false;
     // Called by all students who havent finished after studying for a quantum
     if((!walkinStudent) && (hallway.empty())){
-        // Walk in, acquire semaphore, and wake up TA if needed
-        std::cout << "TA being woken up by Student: " << currentStudent->studentId << std::endl;
-        currentTa->taState = Waking;
-        // Acquire Semaphore
 
-        // Set current Student
-        walkinStudent = currentStudent;
-        successfulVisit = true;
+        // Walk in, release semaphore, and wake up TA
+        if(currentTa->taState == Sleeping){
+            std::cout << "TA being woken up by Student: " << currentStudent->studentId << std::endl;
+            currentTa->taState = Waking;
+            walkinStudent = currentStudent;
+            taSemaphore.release();  // Wakes up the TA
+            successfulVisit = true;
+        }
+        else{
+            walkinStudent = currentStudent;
+            std::cout << "TA already awake. Student " << currentStudent->studentId << " just walked in and started" << std::endl;
+            successfulVisit = true;
+        }
     }
 
     // Acquire/Wait (walk-in, grab a chair, or go back to studying)
@@ -91,6 +102,7 @@ bool visitTa (Student *currentStudent, TeachingAssistant *currentTa) {
     else if (hallway.size() != 3){  // Grab a chair if one is available
         hallway.push_back(currentStudent);
         successfulVisit = true;
+        std::cout << "Student " << currentStudent->studentId << " queued." << std::endl;
     }
 
     // Release/Signal (Tell the next student to go in)
