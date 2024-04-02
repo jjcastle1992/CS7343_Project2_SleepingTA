@@ -28,30 +28,102 @@ struct Student {
     bool homeworkFinished;
 };
 
+// ************GLOBAL VARIABLES********* TERRIBLE PRACTICE
+std::binary_semaphore s(1); // our semaphore acting as a mutex lock
+std::vector<Student*> students;
+std::vector<Student*> hallway;
+Student *walkinStudent = nullptr;
+int studytime = 10; // time quantum for studying before seeking help.
+
 enum taStatus {Sleeping, Waking, Helping};
 
-void taOfficeHours (int studentId){
+void taOfficeHours (TeachingAssistant *currentTa){
     // While students are still finishing their assignments, continue to run (work, wait, sleep)
-    //  Denote checking for students in hall chairs
+    while(currentTa->studentsStillStudying != 0){
 
-    // Denote working with student (id)
+//        **** TO IMPLEMENT****** SLEEP AND WAKEUP INSTEAD OF STRAIGHT TO QUEUE
+        // See if there is a walk-in students (no one in chairs so no one in queue, but student waiting to be served)
+        if(walkinStudent){
+            if(currentTa->taState == Sleeping){
+                std::cout << "TA Waiting to be woken up by Walk-in" << std::endl;
+            }
+            else{
+                Student *currentStudent = walkinStudent;
+                std::cout << "TA working with Student:" << currentStudent->studentId << std::endl;
+                currentStudent = nullptr;
+            }
+        }
 
-    // Denote no students (going to sleep)
+        // Checking for students in hall chairs
+        if((!hallway.empty()) && (currentTa->taState != Sleeping)){
+            // Critical Section
+            Student *currentStudent = hallway[0]; // Call in the next student
+            hallway.erase(hallway.begin()); // Dequeue the student off the queue
+            std::cout << "TA working with Student:" << currentStudent->studentId << std::endl;
+        }
 
+        // No students (going to sleep)
+        else{
+            std::cout << "TA getting sleepy..." << std::endl;
+            currentTa->taState = Sleeping;
+        }
+    }
     // Exit once all students have finished their assignments
+    std::cout << "ALl students done! TA Going home!" << std::endl;
 }
 
-bool visitTa () {
+bool visitTa (Student *currentStudent, TeachingAssistant *currentTa) {
+    bool successfulVisit = false;
     // Called by all students who havent finished after studying for a quantum
+    if((!walkinStudent) && (hallway.empty())){
+        // Walk in, acquire semaphore, and wake up TA if needed
+        std::cout << "TA being woken up by Student: " << currentStudent->studentId << std::endl;
+        currentTa->taState = Waking;
+        // Acquire Semaphore
 
-    // Acquire/Wait (grab a chair or go back to studying)
-        // Critical Section (in the TA office)
+        // Set current Student
+        walkinStudent = currentStudent;
+        successfulVisit = true;
+    }
+
+    // Acquire/Wait (walk-in, grab a chair, or go back to studying)
+
+    else if (hallway.size() != 3){  // Grab a chair if one is available
+        hallway.push_back(currentStudent);
+        successfulVisit = true;
+    }
+
     // Release/Signal (Tell the next student to go in)
         // Remainder
+    return successfulVisit;
 }
 
-bool study (){
+void study (Student* currentStudent, TeachingAssistant *currentTa){
     // Called by all students
+    while(currentStudent->timeRemaining > 0){  // // study for a quantum (or less if remaining time < quantum)
+        for (int i = 0; i < studytime; i++){
+            if(currentStudent->timeRemaining <= 0){
+                break;
+            }
+            currentStudent->timeRemaining--;
+        }
+        // If not done, check if TA is available
+        if(currentStudent->timeRemaining >0){
+            bool taVisited = visitTa(currentStudent, currentTa);
+            currentStudent->taVistsAttempted++;
+            if(taVisited){
+                currentStudent->taVisitsSucceeded++;
+            }
+            else{
+                currentStudent->taBusyTimes++;
+            }
+        }
+    }
+
+
+    std::cout << "Student " << currentStudent->studentId << " Done Studying!";
+    currentStudent->homeworkFinished = true;
+    currentTa->studentsStillStudying--;
 }
 
 int randomRangeGen(int endRange, int startRange = 0, unsigned int seed = 42) {
@@ -75,16 +147,12 @@ int randomRangeGen(int endRange, int startRange = 0, unsigned int seed = 42) {
 }
 
 int main(){
-    std::binary_semaphore s(1); // our semaphore acting as a mutex lock
-    std::vector<Student*> students;
-    std::vector<int> hallway = {0, 0, 0};
     unsigned int seed = 2; // to ensure same results
 
     // Student config variables
     int numberStudents = 4; // Number of students working on programming assignments
     int minAssignmentCompletionTime = 10; // min time taken to complete the assignment for each student
     int maxAssignmentCompletionTime = 100; // max time taken to complete the assignment for each student
-    int studytime = 10; // time quantum for studying before seeking help.
 
 
     // Make our TA and our students
@@ -111,6 +179,15 @@ int main(){
 
     std::cout << "TA and students made" << std::endl;
 
+    // Start TA office hours
+    while(ourTa->studentsStillStudying > 0){
+        taOfficeHours(ourTa);
+        for(int stu = 0; stu < students.size(); stu++){
+            study(students[stu], ourTa);
+        }
+    }
+
+    std::cout << "done" << std::endl;
 
     // Hallway has 3 chairs for students to wait (array size 3)
         // Check if hallway is empty (student and TA check)
