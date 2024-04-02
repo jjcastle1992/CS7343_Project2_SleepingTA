@@ -14,7 +14,7 @@ Purpose: Implementaation of the Sleeping Teaching Assistant (Project 2)
 
 struct TeachingAssistant {
     int numStudents;
-    enum taStatus {Sleeping, Waking, Helping};
+    int taState;  // 0 = sleeping, 1 = waking, 2 = helping
     int studentsStillStudying;
 };
 
@@ -27,6 +27,8 @@ struct Student {
     int taBusyTimes;  // Times the seats in the hall were full
     bool homeworkFinished;
 };
+
+enum taStatus {Sleeping, Waking, Helping};
 
 void taOfficeHours (int studentId){
     // While students are still finishing their assignments, continue to run (work, wait, sleep)
@@ -89,6 +91,7 @@ int main(){
     auto *ourTa = new TeachingAssistant;
     ourTa->studentsStillStudying = numberStudents;
     ourTa->numStudents = numberStudents;
+    ourTa->taState = Sleeping;
 
     // Create Students
     for (int i = 0; i < numberStudents; i++){
