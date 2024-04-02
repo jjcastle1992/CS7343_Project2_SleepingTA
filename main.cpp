@@ -6,10 +6,51 @@ Purpose: Implementaation of the Sleeping Teaching Assistant (Project 2)
 
 #import <random>
 #include <string>
+#include <iostream>
 #include <vector>
 #include <thread>
 #include <mutex>
 #include <semaphore>
+
+struct TeachingAssistant {
+    int numStudents;
+    enum taStatus {Sleeping, Waking, Helping};
+    int studentsStillStudying;
+};
+
+struct Student {
+    int studentId;
+    int timeToCompleteHw; // Starting time to complete assignment (randomized)
+    int timeRemaining; // time left to complete assignment
+    int taVistsAttempted;   // Total number of attempted TA visits (attempted to get help/queue for help)
+    int taVisitsSucceeded;  // Times actually got help from TA (visited the TA and/or got a seat in the hall)
+    int taBusyTimes;  // Times the seats in the hall were full
+    bool homeworkFinished;
+};
+
+void taOfficeHours (int studentId){
+    // While students are still finishing their assignments, continue to run (work, wait, sleep)
+    //  Denote checking for students in hall chairs
+
+    // Denote working with student (id)
+
+    // Denote no students (going to sleep)
+
+    // Exit once all students have finished their assignments
+}
+
+bool visitTa () {
+    // Called by all students who havent finished after studying for a quantum
+
+    // Acquire/Wait (grab a chair or go back to studying)
+        // Critical Section (in the TA office)
+    // Release/Signal (Tell the next student to go in)
+        // Remainder
+}
+
+bool study (){
+    // Called by all students
+}
 
 int randomRangeGen(int endRange, int startRange = 0, unsigned int seed = 42) {
     // General implementation borrowed from:
@@ -32,10 +73,42 @@ int randomRangeGen(int endRange, int startRange = 0, unsigned int seed = 42) {
 }
 
 int main(){
+    std::binary_semaphore s(1); // our semaphore acting as a mutex lock
+    std::vector<Student*> students;
     std::vector<int> hallway = {0, 0, 0};
+    unsigned int seed = 2; // to ensure same results
+
+    // Student config variables
+    int numberStudents = 4; // Number of students working on programming assignments
     int minAssignmentCompletionTime = 10; // min time taken to complete the assignment for each student
     int maxAssignmentCompletionTime = 100; // max time taken to complete the assignment for each student
     int studytime = 10; // time quantum for studying before seeking help.
+
+
+    // Make our TA and our students
+    auto *ourTa = new TeachingAssistant;
+    ourTa->studentsStillStudying = numberStudents;
+    ourTa->numStudents = numberStudents;
+
+    // Create Students
+    for (int i = 0; i < numberStudents; i++){
+        // Initialize student
+        auto *currentStudent = new Student;
+        currentStudent->studentId = i;
+        currentStudent->timeToCompleteHw = randomRangeGen(maxAssignmentCompletionTime, minAssignmentCompletionTime, seed + i);
+        currentStudent->timeRemaining = currentStudent->timeToCompleteHw;
+        currentStudent->taVistsAttempted = 0;
+        currentStudent->taVisitsSucceeded = 0;
+        currentStudent->taBusyTimes = 0;
+        currentStudent->homeworkFinished = false;
+
+        // add to vector of students
+        students.push_back(currentStudent);
+    }
+
+    std::cout << "TA and students made" << std::endl;
+
+
     // Hallway has 3 chairs for students to wait (array size 3)
         // Check if hallway is empty (student and TA check)
 
@@ -69,8 +142,7 @@ int main(){
                     // If yes, awaken with a Semaphore
 
                     // If not, get help (don't think this is possible)
-
-
+    delete ourTa;
 
     return 0;
 }
