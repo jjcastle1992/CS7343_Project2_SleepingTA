@@ -45,7 +45,7 @@ void taOfficeHours (TeachingAssistant *currentTa){
         // See if there is a walk-in students (no one in chairs so no one in queue, but student waiting to be served)
         if(walkinStudent){
             if(currentTa->taState == Sleeping){
-                std::cout << "TA Waiting to be woken up by Walk-in" << std::endl;
+//                std::cout << "TA Waiting to be woken up by Walk-in" << std::endl;
             }
             else{
                 Student *currentStudent = walkinStudent;
@@ -64,7 +64,7 @@ void taOfficeHours (TeachingAssistant *currentTa){
 
         // No students (going to sleep)
         else{
-            std::cout << "TA getting sleepy..." << std::endl;
+//            std::cout << "TA getting sleepy..." << std::endl;
             currentTa->taState = Sleeping;
         }
     }
@@ -121,7 +121,7 @@ void study (Student* currentStudent, TeachingAssistant *currentTa){
     }
 
 
-    std::cout << "Student " << currentStudent->studentId << " Done Studying!";
+    std::cout << "Student " << currentStudent->studentId << " Done Studying!" << std::endl;
     currentStudent->homeworkFinished = true;
     currentTa->studentsStillStudying--;
 }
@@ -180,11 +180,20 @@ int main(){
     std::cout << "TA and students made" << std::endl;
 
     // Start TA office hours
+    std::vector<std::thread> studentThreads;
+
     while(ourTa->studentsStillStudying > 0){
-        taOfficeHours(ourTa);
+        std::thread oh(&taOfficeHours, ourTa); // Thread for TA's office hours
+
         for(int stu = 0; stu < students.size(); stu++){
-            study(students[stu], ourTa);
+            studentThreads.emplace_back(&study, students[stu], ourTa);
         }
+        for (auto& thread : studentThreads) {
+            thread.join();
+        }
+
+        // Join TA office hour thread
+        oh.join();
     }
 
     std::cout << "done" << std::endl;
