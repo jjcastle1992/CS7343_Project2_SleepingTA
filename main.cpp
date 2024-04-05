@@ -31,14 +31,14 @@ struct Student {
 };
 
 // ************GLOBAL VARIABLES********* TERRIBLE PRACTICE
+int STUDYTIME = 10; // time quantum for studying before seeking help.
 std::binary_semaphore taSemaphore(1); // our semaphore for TA thread critical section
 std::binary_semaphore studentSemaphore(1); // Mutex lock for student in office
 std::counting_semaphore<4> hallwaySemaphore(4); // Semaphore for office + 3 hallway chair access
-
 std::vector<Student*> students;
 std::vector<Student*> hallway;
 int hallwayIndex = -1; // 0 - 4 where 0 is the office, 1 to 3 are the chairs outside.
-int studytime = 10; // time quantum for studying before seeking help.
+
 enum taStatus {Sleeping, Waking, Helping};
 mutex outputMutex; // Mutex for synchronizing output
 
@@ -152,7 +152,7 @@ void study (Student* currentStudent, TeachingAssistant *currentTa){
 //                         to_string(currentStudent->timeRemaining);
 //        atomPrint(&message);
 
-        for (int i = 0; i < studytime; i++){
+        for (int i = 0; i < STUDYTIME; i++){
             if(currentStudent->timeRemaining <= 0){
                 break;
                 currentStudent->homeworkFinished = true;
