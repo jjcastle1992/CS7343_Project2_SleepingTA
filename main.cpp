@@ -12,6 +12,8 @@ Purpose: Implementaation of the Sleeping Teaching Assistant (Project 2)
 #include <mutex>
 #include <semaphore>
 
+using namespace std;
+
 struct TeachingAssistant {
     int numStudents;
     int taState;  // 0 = sleeping, 1 = waking, 2 = helping
@@ -29,14 +31,42 @@ struct Student {
 };
 
 // ************GLOBAL VARIABLES********* TERRIBLE PRACTICE
-std::binary_semaphore taSemaphore(1); // our semaphore acting as a mutex lock
+std::binary_semaphore taSemaphore(1); // our semaphore for TA thread critical section
+std::binary_semaphore studentSemaphore(1); // Mutex lock for student in office
+std::counting_semaphore<4> hallwaySemaphore(4); // Semaphore for office + 3 hallway chair access
 
 std::vector<Student*> students;
 std::vector<Student*> hallway;
-Student *walkinStudent = nullptr;
+int hallwayIndex = -1; // 0 - 4 where 0 is the office, 1 to 3 are the chairs outside.
 int studytime = 10; // time quantum for studying before seeking help.
 enum taStatus {Sleeping, Waking, Helping};
+mutex outputMutex; // Mutex for synchronizing output
 
+void atomPrint(std::string *message) {
+    // Modified to atomically print
+    lock_guard<mutex> lock(outputMutex); // Lock the mutex
+    cout << *message << endl; // Print the message
+}
+
+int randomRangeGen(int endRange, int startRange = 0, unsigned int seed = 42) {
+    // General implementation borrowed from:
+    // https://www.digitalocean.com/community/tutorials/random-number-generator-c-plus-plus
+    int random;
+
+    // Random pathway
+    if (seed == 42) {
+        random = startRange + (rand() % ((endRange - startRange) + 1));
+    }
+        // Set seed pathway
+    else {
+        // Modified with ChatGPT to take in a seed.
+        // Initialize the random number generator with the provided seed
+        std::mt19937 gen(seed);
+        // Retrieve a random number between startRange and EndRange
+        random = startRange + (gen() % ((endRange - startRange) + 1));
+    }
+    return random;
+}
 
 void taOfficeHours (TeachingAssistant *currentTa){
     // While students are still finishing their assignments, continue to run (work, wait, sleep)
@@ -44,65 +74,69 @@ void taOfficeHours (TeachingAssistant *currentTa){
 
 //        **** TO IMPLEMENT****** SLEEP AND WAKEUP INSTEAD OF STRAIGHT TO QUEUE
         // See if there is a walk-in students (no one in chairs so no one in queue, but student waiting to be served)
-        if(walkinStudent){
-            if(currentTa->taState == Sleeping){
-                std::cout << "There is a walk-in, but I am asleep" << std::endl;
-                taSemaphore.acquire();  // Wait to complete until Semaphore is acquired
-            }
-            else{
-
-                currentTa->taState = Helping;
-                Student *currentStudent = walkinStudent;
-                std::cout << "TA working with Student:" << currentStudent->studentId << std::endl;
-                currentStudent = nullptr;
-            }
+        if((hallwayIndex >= 0) && (currentTa->taState == Sleeping)) {
+            string message = "There is a walk-in, but I am asleep";
+            atomPrint(&message);
         }
-
         // Checking for students in hall chairs
         if((!hallway.empty()) && (currentTa->taState != Sleeping)){
             currentTa->taState = Helping;
             // Critical Section
             Student *currentStudent = hallway[0]; // Call in the next student
+            string message = "\nStudent " + to_string(currentStudent->studentId) + " in Office.";
+            atomPrint(&message);
             hallway.erase(hallway.begin()); // Dequeue the student off the queue
-            std::cout << "TA working with Student:" << currentStudent->studentId << std::endl;
+            message = "TA working with Student:" + to_string(currentStudent->studentId);
+            atomPrint(&message);
+            hallwaySemaphore.release();
         }
 
         // No students (going to sleep)
         else{
-//            std::cout << "TA getting sleepy..." << std::endl;
-            currentTa->taState = Sleeping;
+            if(currentTa->taState != Sleeping){
+                currentTa->taState = Sleeping;
+                string message = "\nTA Falling asleep...";
+                atomPrint(&message);
+            }
+            else{
+                string message = "TA is sleeping...";
+                atomPrint(&message);
+            }
+            this_thread::sleep_for(chrono::seconds(1));
         }
     }
     // Exit once all students have finished their assignments
-    std::cout << "ALl students done! TA Going home!" << std::endl;
+    string message = "ALl students done! TA Going home!";
+    atomPrint(&message);
 }
 
 bool visitTa (Student *currentStudent, TeachingAssistant *currentTa) {
     bool successfulVisit = false;
     // Called by all students who havent finished after studying for a quantum
-    if((!walkinStudent) && (hallway.empty())){
 
-        // Walk in, release semaphore, and wake up TA
+    if(hallway.empty()){
+        hallwaySemaphore.acquire();
+        studentSemaphore.acquire();
+        hallway.push_back(currentStudent);
+        // Walk in and wake up TA if needed
         if(currentTa->taState == Sleeping){
-            std::cout << "TA being woken up by Student: " << currentStudent->studentId << std::endl;
+            string message = "TA being woken up by Student: " + to_string(currentStudent->studentId);
+            atomPrint(&message);
             currentTa->taState = Waking;
-            walkinStudent = currentStudent;
-            taSemaphore.release();  // Wakes up the TA
-            successfulVisit = true;
         }
-        else{
-            walkinStudent = currentStudent;
-            std::cout << "TA already awake. Student " << currentStudent->studentId << " just walked in and started" << std::endl;
-            successfulVisit = true;
-        }
+
+        successfulVisit = true;
+        studentSemaphore.release(); // Done with the office
     }
 
     // Acquire/Wait (walk-in, grab a chair, or go back to studying)
 
-    else if (hallway.size() != 3){  // Grab a chair if one is available
+    else if (hallway.size() <= 4){  // Grab a chair if one is available
+        hallwaySemaphore.acquire();
         hallway.push_back(currentStudent);
         successfulVisit = true;
-        std::cout << "Student " << currentStudent->studentId << " queued." << std::endl;
+        string message = "Student " + to_string(currentStudent->studentId) + " queued.";
+        atomPrint(&message);
     }
 
     // Release/Signal (Tell the next student to go in)
@@ -130,32 +164,15 @@ void study (Student* currentStudent, TeachingAssistant *currentTa){
                 currentStudent->taBusyTimes++;
             }
         }
+        // Sleep
+        int sleepTime = randomRangeGen(10, 1, 42);  // sleep for 1 to 10 seconds
+        this_thread::sleep_for(chrono::seconds(sleepTime));
     }
 
-
-    std::cout << "Student " << currentStudent->studentId << " Done Studying!" << std::endl;
+    string message = "Student " + to_string(currentStudent->studentId) + " Done Studying!";
+    atomPrint(&message);
     currentStudent->homeworkFinished = true;
     currentTa->studentsStillStudying--;
-}
-
-int randomRangeGen(int endRange, int startRange = 0, unsigned int seed = 42) {
-    // General implementation borrowed from:
-    // https://www.digitalocean.com/community/tutorials/random-number-generator-c-plus-plus
-    int random;
-
-    // Random pathway
-    if (seed == 42) {
-        random = startRange + (rand() % ((endRange - startRange) + 1));
-    }
-        // Set seed pathway
-    else {
-        // Modified with ChatGPT to take in a seed.
-        // Initialize the random number generator with the provided seed
-        std::mt19937 gen(seed);
-        // Retrieve a random number between startRange and EndRange
-        random = startRange + (gen() % ((endRange - startRange) + 1));
-    }
-    return random;
 }
 
 int main(){
@@ -210,39 +227,6 @@ int main(){
 
     std::cout << "done" << std::endl;
 
-    // Hallway has 3 chairs for students to wait (array size 3)
-        // Check if hallway is empty (student and TA check)
-
-    // TA has 3 states (Sleeping, Awake, Helping)
-
-    // Use threads, mutex locks, and sempaphores
-
-    // Create a separate thread for the TA
-
-        // Check to see if students are waiting for help in the hallway
-
-    // Create a thread for each student
-        // Generate the student's study time for the assignment
-
-        // Student threads will either be programming (for a quantum) or seeking help from the TA
-
-        // Do while loop to start first round of programming
-
-            // if finish the assignment, set completion time, number of attempted/missed/successful trips to TA, and completion flag true
-
-            // If not finished at the end of the quantum:
-                // Check if there's a line outside the TA's office
-
-                // If so, check if there'a an available chair
-
-                    // If available, get in the first available chair
-
-                    // If not, go back to studying and note an attempt and a miss.
-
-                // Else if there is not a line, check if the TA is sleeping
-                    // If yes, awaken with a Semaphore
-
-                    // If not, get help (don't think this is possible)
     delete ourTa;
 
     return 0;
