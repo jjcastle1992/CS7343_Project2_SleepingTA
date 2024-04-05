@@ -86,7 +86,8 @@ void taOfficeHours (TeachingAssistant *currentTa){
             string message = "\nStudent " + to_string(currentStudent->studentId) + " in Office.";
             atomPrint(&message);
             hallway.erase(hallway.begin()); // Dequeue the student off the queue
-            message = "TA working with Student:" + to_string(currentStudent->studentId);
+            message = "TA working with Student:" + to_string(currentStudent->studentId) +
+                    " (Study Time Remaining: " + to_string(currentStudent->timeRemaining) + ")";
             atomPrint(&message);
             hallwaySemaphore.release();
         }
@@ -99,8 +100,8 @@ void taOfficeHours (TeachingAssistant *currentTa){
                 atomPrint(&message);
             }
             else{
-                string message = "TA is sleeping...";
-                atomPrint(&message);
+//                string message = "TA is sleeping...";
+//                atomPrint(&message);
             }
             this_thread::sleep_for(chrono::seconds(1));
         }
@@ -120,7 +121,7 @@ bool visitTa (Student *currentStudent, TeachingAssistant *currentTa) {
         hallway.push_back(currentStudent);
         // Walk in and wake up TA if needed
         if(currentTa->taState == Sleeping){
-            string message = "TA being woken up by Student: " + to_string(currentStudent->studentId);
+            string message = "\nTA being woken up by Student: " + to_string(currentStudent->studentId);
             atomPrint(&message);
             currentTa->taState = Waking;
         }
@@ -131,7 +132,7 @@ bool visitTa (Student *currentStudent, TeachingAssistant *currentTa) {
 
     // Acquire/Wait (walk-in, grab a chair, or go back to studying)
 
-    else if (hallway.size() <= 4){  // Grab a chair if one is available
+    else if (hallway.size() < 4){  // Grab a chair if one is available
         hallwaySemaphore.acquire();
         hallway.push_back(currentStudent);
         successfulVisit = true;
@@ -147,9 +148,14 @@ bool visitTa (Student *currentStudent, TeachingAssistant *currentTa) {
 void study (Student* currentStudent, TeachingAssistant *currentTa){
     // Called by all students
     while(currentStudent->timeRemaining > 0){  // // study for a quantum (or less if remaining time < quantum)
+//        string message = "Student " + to_string(currentStudent->studentId) + " Study Time remaining: " +
+//                         to_string(currentStudent->timeRemaining);
+//        atomPrint(&message);
+
         for (int i = 0; i < studytime; i++){
             if(currentStudent->timeRemaining <= 0){
                 break;
+                currentStudent->homeworkFinished = true;
             }
             currentStudent->timeRemaining--;
         }
@@ -164,9 +170,17 @@ void study (Student* currentStudent, TeachingAssistant *currentTa){
                 currentStudent->taBusyTimes++;
             }
         }
-        // Sleep
-        int sleepTime = randomRangeGen(10, 1, 42);  // sleep for 1 to 10 seconds
-        this_thread::sleep_for(chrono::seconds(sleepTime));
+        if(currentStudent->homeworkFinished){
+            break;
+        }
+        else{
+            // Sleep
+            int sleepTime = randomRangeGen(10, 1, 42 + currentStudent->timeRemaining);  // sleep for 1 to 10 seconds
+//            message = "Student " + to_string(currentStudent->studentId) + " Sleeping for " + to_string(sleepTime) +
+//                      " seconds";
+//            atomPrint(&message);
+            this_thread::sleep_for(chrono::seconds(sleepTime));
+        }
     }
 
     string message = "Student " + to_string(currentStudent->studentId) + " Done Studying!";
@@ -176,7 +190,7 @@ void study (Student* currentStudent, TeachingAssistant *currentTa){
 }
 
 int main(){
-    unsigned int seed = 2; // to ensure same results
+    unsigned int seed = 42; // to ensure same results
 
     // Student config variables
     int numberStudents = 4; // Number of students working on programming assignments
